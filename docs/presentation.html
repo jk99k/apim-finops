@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>開発者の AI 利用料を "金額" で管理したかった話 — FinOps for AI</title>
+<style>
+  :root{
+    --ink:#11151c; --sub:#5c6675; --line:#e0e5ee; --bg:#f5f7fb; --card:#fff;
+    --blue:#0b6bcb; --blue-s:#e5f0ff;
+    --green:#12855a; --green-s:#e1f5ec;
+    --amber:#b26a00; --amber-s:#fff3dd;
+    --red:#c2352b; --red-s:#ffe7e4;
+    --purple:#6b3fbf; --purple-s:#f0e9ff;
+    --note:#fbfaf5;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);line-height:1.62;
+    font-family:"Yu Gothic UI","Hiragino Kaku Gothic ProN","Noto Sans JP",-apple-system,"Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1060px;margin:0 auto;padding:0 24px 100px;}
+
+  .hero{padding:80px 0 40px;text-align:center;}
+  .kicker{display:inline-block;font-size:13px;letter-spacing:.16em;font-weight:800;
+    color:var(--blue);background:var(--blue-s);padding:8px 20px;border-radius:999px;margin-bottom:26px;}
+  .hero h1{font-size:clamp(30px,5vw,54px);line-height:1.24;margin:0 0 18px;font-weight:800;letter-spacing:-.02em;}
+  .hero .sub{font-size:clamp(15px,1.9vw,19px);color:var(--sub);margin:0;}
+
+  .toc{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 30px;margin-bottom:40px;}
+  .toc h3{margin:0 0 14px;font-size:15px;letter-spacing:.1em;color:var(--sub);font-weight:800;}
+  .toc ol{margin:0;padding-left:22px;font-size:15px;color:var(--sub);}
+  .toc li{margin-bottom:5px;}
+  .toc b{color:var(--ink);}
+  .toc .t{float:right;font-variant-numeric:tabular-nums;color:#9aa4b3;font-size:13px;font-weight:700;}
+
+  .chapter{margin:52px 0 20px;padding-left:4px;}
+  .chapter .ch{font-size:12px;letter-spacing:.18em;font-weight:800;color:#9aa4b3;}
+  .chapter h2{font-size:clamp(22px,3vw,30px);margin:6px 0 0;font-weight:800;letter-spacing:-.01em;}
+
+  section{background:var(--card);border:1px solid var(--line);border-radius:20px;
+    padding:38px 38px 34px;margin-bottom:22px;box-shadow:0 1px 2px rgba(17,21,28,.04);}
+  .sid{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+  .sid .n{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;
+    padding:0 10px;border-radius:10px;background:var(--ink);color:#fff;font-size:14px;font-weight:800;}
+  .sid .time{font-size:12px;font-weight:800;letter-spacing:.1em;color:#9aa4b3;}
+  h3.title{font-size:clamp(22px,3.2vw,34px);line-height:1.3;margin:0 0 10px;font-weight:800;letter-spacing:-.01em;}
+  .msg{font-size:clamp(15px,1.85vw,19px);color:var(--sub);margin:0 0 26px;max-width:64ch;}
+  .msg b{color:var(--ink);}
+
+  /* metaphor block: 比喩 → 具体例 → 一般化 */
+  .flow{display:grid;gap:0;margin:24px 0 8px;border:1px solid var(--line);border-radius:16px;overflow:hidden;}
+  .step{display:grid;grid-template-columns:120px 1fr;gap:20px;padding:20px 24px;align-items:start;}
+  .step + .step{border-top:1px solid var(--line);}
+  .step .lbl{font-size:13px;font-weight:800;letter-spacing:.06em;padding:5px 0;}
+  .step.s1{background:var(--amber-s);} .step.s1 .lbl{color:var(--amber);}
+  .step.s2{background:#fff;} .step.s2 .lbl{color:var(--blue);}
+  .step.s3{background:var(--blue-s);} .step.s3 .lbl{color:var(--blue);}
+  .step .body{font-size:16px;}
+  .step .body b{display:block;margin-bottom:4px;font-size:17px;}
+
+  svg{display:block;width:100%;height:auto;}
+  .art{margin:22px 0 6px;}
+
+  .stats{display:flex;flex-wrap:wrap;gap:14px;margin-top:24px;}
+  .stat{flex:1 1 180px;border:1px solid var(--line);border-radius:14px;padding:20px 22px;background:#fbfcfe;}
+  .stat .v{font-size:clamp(26px,4vw,40px);font-weight:800;line-height:1.05;letter-spacing:-.02em;}
+  .stat .l{font-size:13px;color:var(--sub);margin-top:7px;font-weight:600;}
+  .stat.red{background:var(--red-s);border-color:#f7ccc7;} .stat.red .v{color:var(--red);}
+  .stat.green{background:var(--green-s);border-color:#c0e7d6;} .stat.green .v{color:var(--green);}
+  .stat.blue{background:var(--blue-s);border-color:#c5def9;} .stat.blue .v{color:var(--blue);}
+  .stat.amber{background:var(--amber-s);border-color:#f3daab;} .stat.amber .v{color:var(--amber);}
+
+  pre{background:#141922;color:#e8edf5;border-radius:14px;padding:20px 22px;overflow-x:auto;
+    font-size:14px;line-height:1.65;margin:22px 0 6px;
+    font-family:"Cascadia Mono",Consolas,"SF Mono",monospace;}
+  pre .c{color:#8b98ab;} pre .k{color:#7fc7ff;} pre .s{color:#9fe6a0;} pre .h{color:#ffd479;}
+  .caption{font-size:13px;color:var(--sub);margin-top:8px;}
+
+  .layers{display:grid;gap:10px;margin-top:22px;}
+  .layer{display:grid;grid-template-columns:140px 1fr;gap:18px;align-items:center;
+    border:1px solid var(--line);border-radius:13px;padding:16px 20px;background:#fbfcfe;}
+  .layer .tag{font-weight:800;font-size:17px;padding:7px 4px;border-radius:9px;text-align:center;}
+  .layer .d{font-size:14px;color:var(--sub);}
+  .layer .d b{color:var(--ink);font-size:15px;display:block;margin-bottom:2px;}
+  .l1 .tag{background:var(--red-s);color:var(--red);}
+  .l2 .tag{background:var(--blue-s);color:var(--blue);}
+  .l3 .tag{background:var(--amber-s);color:var(--amber);}
+  .l4 .tag{background:var(--green-s);color:var(--green);}
+  .l0 .tag{background:#eef1f6;color:var(--sub);}
+
+  .why{margin-top:22px;padding:16px 20px;border-left:4px solid var(--blue);
+    background:var(--blue-s);border-radius:0 10px 10px 0;font-size:15px;}
+  .why b{color:var(--blue);}
+
+  .notes{margin-top:26px;padding:20px 24px;background:var(--note);
+    border:1px dashed #ddd6c0;border-radius:14px;}
+  .notes .h{font-size:11px;letter-spacing:.16em;font-weight:800;color:#a89a70;margin-bottom:10px;}
+  .notes p{margin:0 0 10px;font-size:14.5px;color:#4f4a3d;}
+  .notes p:last-child{margin-bottom:0;}
+
+  .end{background:var(--ink);color:#fff;border:none;}
+  .end h3.title{color:#fff;}
+  .end .msg{color:#b7c0cd;}
+  .end .layer{background:#1c222c;border-color:#2c3542;}
+  .end .layer .d{color:#a9b3c1;} .end .layer .d b{color:#fff;}
+  .end .notes{background:#1c222c;border-color:#39424f;}
+  .end .notes p{color:#b7c0cd;}
+  .oneline{margin-top:26px;padding:22px;border-radius:14px;background:#232b36;
+    font-size:clamp(16px,2.1vw,21px);font-weight:700;text-align:center;line-height:1.5;}
+
+  .foot{text-align:center;color:var(--sub);font-size:13px;padding-top:26px;}
+  @media(max-width:680px){
+    section{padding:28px 22px 26px;}
+    .step,.layer{grid-template-columns:1fr;gap:8px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="hero">
+  <div class="kicker">FinOps for AI ／ JAZUG 35分</div>
+  <h1>開発者の AI 利用料を<br>&quot;金額&quot; で管理したかった話</h1>
+  <p class="sub">Azure API Management で、やってみて、できなかったこと</p>
+</div>
+
+<div class="toc">
+  <h3>アジェンダ</h3>
+  <ol>
+    <li><b>FinOps for AI とは何か</b><span class="t">4分</span></li>
+    <li><b>なぜゲートウェイが要るのか</b><span class="t">4分</span></li>
+    <li><b>APIM で作る（本編）</b><span class="t">16分</span></li>
+    <li><b>AI Gateway tier という新しい選択肢</b><span class="t">5分</span></li>
+    <li><b>まとめ</b><span class="t">3分</span></li>
+  </ol>
+</div>
+
+<!-- ============ 0 ============ -->
+<div class="chapter"><div class="ch">SECTION 0</div><h2>アジェンダ + 自己紹介</h2></div>
+
+<section>
+  <div class="sid"><span class="n">0</span><span class="time">2分</span></div>
+  <h3 class="title">今日は「うまくいった話」をしません</h3>
+  <p class="msg">やりたかったことは <b>金額で止めること</b>。結論から言うと、<b>できませんでした</b>。なぜできないのかと、ではどうしたかを話します。</p>
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>冒頭で結論を割ってしまいます。「金額で止めたかったが、できなかった」と最初に言うことで、この後の壁①・壁②が「言い訳」ではなく「調査結果」として聞こえます。</p>
+    <p>ここで期待値を調整しておきます。今日持ち帰れるのは、完璧な解決策ではなく「どこまでは機械に任せられて、どこからは任せられないか」の線引きです。</p>
+  </div>
+</section>
+
+<!-- ============ 1 ============ -->
+<div class="chapter"><div class="ch">SECTION 1 ／ 4分</div><h2>FinOps for AI とは何か</h2></div>
+
+<section>
+  <div class="sid"><span class="n">1-1</span><span class="time">2分</span></div>
+  <h3 class="title">FinOps は「節約」のことではない</h3>
+  <p class="msg">お金の話を、<b>使う人が自分で見られるようにする</b>取り組みです。</p>
+
+  <div class="flow">
+    <div class="step s1"><div class="lbl">たとえば</div><div class="body">
+      <b>電気代の見える化に似ています</b>
+      昔は月末に請求書が1枚来るだけでした。今はブレーカーごとに「エアコンがいくら」と分かります。使用量が減るのは、我慢したからではなく、見えるようになったからです。
+    </div></div>
+    <div class="step s2"><div class="lbl">つまり</div><div class="body">
+      <b>クラウドでも同じことをする</b>
+      請求書を1枚眺めるのではなく、チーム別・サービス別に分けて、使っている本人が見られる状態にします。
+    </div></div>
+    <div class="step s3"><div class="lbl">一般化すると</div><div class="body">
+      <b>FinOps は「financial accountability を持ち込む」実践</b>
+      財務・エンジニア・ビジネスが同じ数字を見て意思決定する、という文化とプロセスの話です。
+    </div></div>
+  </div>
+
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>FinOps を「コスト削減活動」と誤解されたまま進むと、この後の「多少はみ出してもよい」という設計判断が理解されません。まず「見えるようにすること」だと置き直します。</p>
+    <p>電気代の比喩は、後半の「4層構成」でも効いてきます。ブレーカー（止める）と電力計（測る）は別の部品だ、という話に繋げられます。</p>
+  </div>
+</section>
+
+<section>
+  <div class="sid"><span class="n">1-2</span><span class="time">2分</span></div>
+  <h3 class="title">今日は 3 フェーズのうち、両端の話</h3>
+  <p class="msg">FinOps Foundation は 3 つのフェーズを定義しています。<b>今日は Inform と Operate</b> の話をします。</p>
+
+  <div class="layers">
+    <div class="layer l2"><div class="tag">Inform</div>
+      <div class="d"><b>見えるようにする</b>誰が・何に・いくら使ったかを、可視化して割り当てる。<span style="color:var(--blue);font-weight:700;">← 今日やる</span></div></div>
+    <div class="layer l0"><div class="tag">Optimize</div>
+      <div class="d"><b>無駄を減らす</b>安いモデルへの切り替え、キャッシュ、プロンプト短縮など。今日は扱いません。</div></div>
+    <div class="layer l4"><div class="tag">Operate</div>
+      <div class="d"><b>仕組みとして回し続ける</b>ガードレールを常時稼働させ、日々の運用に組み込む。<span style="color:var(--green);font-weight:700;">← 今日やる</span></div></div>
+  </div>
+
+  <div class="why">
+    <b>なぜ両端なのか：</b>AI の場合、Optimize（安いモデルに変える）はアプリ側の判断です。
+    ゲートウェイという「共通の通り道」で解けるのは、見えるようにすること（Inform）と、
+    ルールを常時効かせること（Operate）の2つだからです。
+  </div>
+
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>フェーズは順番にこなすものではなく、繰り返し回るループだと補足します。ただし今日は「どこをゲートウェイで解くか」の線引きが本題なので、深入りしません。</p>
+    <p>「Optimize を扱わない」と明言することが重要です。扱わない範囲を先に切ることで、後半の主張の射程がはっきりします。</p>
+  </div>
+</section>
+
+<section>
+  <div class="sid"><span class="n">1-3</span><span class="time">1分</span></div>
+  <h3 class="title">AI が来て、何が変わったか</h3>
+  <p class="msg">クラウドの FinOps と違い、AI には <b>2つのやっかいな性質</b>があります。</p>
+
+  <div class="layers">
+    <div class="layer l3"><div class="tag">性質①</div>
+      <div class="d"><b>モデルは他人の資産</b>中身をチューニングして安くする、ということが基本できない。値段は向こうが決める。</div></div>
+    <div class="layer l3"><div class="tag">性質②</div>
+      <div class="d"><b>出力が非決定的</b>同じことを聞いても、返ってくる長さが毎回違う。つまり毎回いくらかかるか違う。</div></div>
+  </div>
+
+  <div class="why"><b>この②が、今日の話の全部です。</b>「毎回いくらか違う」は、突き詰めると「事前にいくらか分からない」になります。</div>
+
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>ここが伏線です。性質②を今は軽く置いておいて、セクション3の壁②で回収します。「さっき言った非決定性が、こういう形で牙をむきます」と繋げます。</p>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<div class="chapter"><div class="ch">SECTION 2 ／ 4分</div><h2>なぜゲートウェイが要るのか</h2></div>
+
+<section>
+  <div class="sid"><span class="n">2-1</span><span class="time">2分</span></div>
+  <h3 class="title">掛け算で増えていく</h3>
+  <p class="msg">開発者 × CLI × モデル。<b>組み合わせの数だけ、把握できない支出が生まれます。</b></p>
+  <div class="art">
+    <svg viewBox="0 0 900 250" role="img" aria-label="複数の開発者が複数のCLIから複数のモデルを直接呼ぶ図">
+      <g font-family="inherit">
+        <circle cx="80" cy="66" r="22" fill="#cfe0f5"/><rect x="55" y="94" width="50" height="34" rx="15" fill="#cfe0f5"/>
+        <circle cx="80" cy="176" r="22" fill="#cfe0f5"/><rect x="55" y="204" width="50" height="34" rx="15" fill="#cfe0f5"/>
+        <text x="80" y="152" text-anchor="middle" font-size="14" fill="#5c6675">開発者</text>
+        <g>
+          <rect x="235" y="24" width="165" height="50" rx="12" fill="#fff" stroke="#e0e5ee" stroke-width="2"/>
+          <text x="317" y="55" text-anchor="middle" font-size="16" font-weight="700">Codex CLI</text>
+          <rect x="235" y="100" width="165" height="50" rx="12" fill="#fff" stroke="#e0e5ee" stroke-width="2"/>
+          <text x="317" y="131" text-anchor="middle" font-size="16" font-weight="700">Claude Code</text>
+          <rect x="235" y="176" width="165" height="50" rx="12" fill="#fff" stroke="#e0e5ee" stroke-width="2"/>
+          <text x="317" y="207" text-anchor="middle" font-size="16" font-weight="700">Copilot CLI</text>
+        </g>
+        <g stroke="#c8d1de" stroke-width="2.5" fill="none">
+          <path d="M110 74 C 175 50, 190 49, 231 49"/><path d="M110 92 C 175 120, 190 124, 231 126"/>
+          <path d="M110 184 C 175 196, 190 200, 231 202"/><path d="M110 168 C 175 140, 190 132, 231 128"/>
+          <path d="M404 49 C 500 49, 520 100, 606 118"/><path d="M404 126 C 500 126, 520 126, 606 128"/>
+          <path d="M404 202 C 500 202, 520 155, 606 138"/>
+          <path d="M404 49 C 500 60, 520 150, 606 170"/><path d="M404 202 C 500 190, 520 105, 606 95"/>
+        </g>
+        <rect x="610" y="70" width="230" height="110" rx="16" fill="#f0e9ff" stroke="#d9cbf8" stroke-width="2"/>
+        <text x="725" y="112" text-anchor="middle" font-size="18" font-weight="800" fill="#6b3fbf">いろんなモデル</text>
+        <text x="725" y="142" text-anchor="middle" font-size="14" fill="#6b3fbf">それぞれ違う単価</text>
+      </g>
+    </svg>
+  </div>
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>線が交差してごちゃごちゃしているのが図の要点です。「これを1本1本追いかけるのは無理ですよね」と視覚で納得させます。</p>
+    <p>実際の現場では、ここに「個人が自分のキーで使っている」が混ざります。それが一番見えない支出です。</p>
+  </div>
+</section>
+
+<section>
+  <div class="sid"><span class="n">2-2</span><span class="time">2分</span></div>
+  <h3 class="title">人を管理するか、システムを管理するか</h3>
+  <p class="msg">アプローチは大きく2つ。<b>どちらが正しいという話ではなく、効く範囲が違います。</b></p>
+
+  <div class="layers">
+    <div class="layer l0"><div class="tag">人を管理</div>
+      <div class="d"><b>ライセンスを配る（Enterprise プラン等）</b>1人あたり定額。誰に配ったかで管理する。使いすぎの心配は少ないが、使う道具はプラン提供元のものに限られる。</div></div>
+    <div class="layer l2"><div class="tag">システムを管理</div>
+      <div class="d"><b>共通の通り道を1本作る（Gateway）</b>道具は自由に選べる。ただし「通った分だけ課金」なので、見張る仕組みを自分で用意する必要がある。</div></div>
+  </div>
+
+  <div class="why"><b>今日はこちら：</b>複数の CLI・複数のモデルを許したい。だから Gateway を選び、その代償として「見張る仕組み」を自作します。</div>
+
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>ここで対立を煽らないことが大事です。「ライセンス型がダメ」と言うと、多くの会社の現実を否定することになります。「道具の自由度と引き換えに、見張る責任を引き受ける」という等価交換として説明します。</p>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<div class="chapter"><div class="ch">SECTION 3 ／ 16分 ・本編</div><h2>APIM で作る</h2></div>
+
+<section>
+  <div class="sid"><span class="n">3-1</span><span class="time">4分</span></div>
+  <h3 class="title">ゲートウェイは「関所」ではなく「工場の門」</h3>
+  <p class="msg">通す・数える・止める。<b>これを設定ファイルで書き、門番が実行します。</b></p>
+
+  <div class="flow">
+    <div class="step s1"><div class="lbl">たとえば</div><div class="body">
+      <b>nginx を思い浮かべてください</b>
+      実際にリクエストを捌いているのは worker プロセスです。人間が触るのは nginx.conf。<b style="display:inline;font-weight:800;">管制室が無人でも、トラックは走り続けます。</b>
+    </div></div>
+    <div class="step s2"><div class="lbl">APIM では</div><div class="body">
+      <b>3つの部品に分かれています</b>
+      ゲートウェイ = nginx の worker（実際に通す）。管理プレーン = nginx.conf を書く行為（ルールを決める）。開発者ポータル = Swagger UI + 利用申請フォーム（使う人の窓口）。
+    </div></div>
+    <div class="step s3"><div class="lbl">だから</div><div class="body">
+      <b>ルールは「ポリシー」という設定として書く</b>
+      アプリのコードを1行も変えずに、通り道の側でルールを足したり外したりできます。
+    </div></div>
+  </div>
+
+  <div class="art">
+    <svg viewBox="0 0 900 210" role="img" aria-label="CLIからAPIMを経由してFoundryへ、Managed Identityで認証する構成図">
+      <g font-family="inherit">
+        <rect x="30" y="70" width="150" height="72" rx="14" fill="#fff" stroke="#e0e5ee" stroke-width="2"/>
+        <text x="105" y="102" text-anchor="middle" font-size="15" font-weight="700">Codex CLI</text>
+        <text x="105" y="124" text-anchor="middle" font-size="12" fill="#5c6675">OpenAI 互換</text>
+        <path d="M185 106 L 290 106" stroke="#c8d1de" stroke-width="3.5" fill="none" marker-end="url(#ar)"/>
+        <defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#c8d1de"/></marker></defs>
+        <rect x="295" y="34" width="290" height="146" rx="18" fill="#e5f0ff" stroke="#0b6bcb" stroke-width="2.5"/>
+        <text x="440" y="66" text-anchor="middle" font-size="17" font-weight="800" fill="#0b6bcb">API Management</text>
+        <g font-size="13.5" fill="#11151c">
+          <text x="440" y="96" text-anchor="middle">① 許したモデルだけ通す</text>
+          <text x="440" y="122" text-anchor="middle">② 上限を超えたら止める</text>
+          <text x="440" y="148" text-anchor="middle">③ 通った量を記録する</text>
+        </g>
+        <path d="M590 106 L 695 106" stroke="#c8d1de" stroke-width="3.5" fill="none" marker-end="url(#ar)"/>
+        <text x="642" y="94" text-anchor="middle" font-size="11.5" font-weight="700" fill="#12855a">Managed Identity</text>
+        <rect x="700" y="70" width="170" height="72" rx="14" fill="#f0e9ff" stroke="#d9cbf8" stroke-width="2"/>
+        <text x="785" y="102" text-anchor="middle" font-size="15" font-weight="700" fill="#6b3fbf">Foundry</text>
+        <text x="785" y="124" text-anchor="middle" font-size="12" fill="#6b3fbf">モデルデプロイ</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="why"><b>鍵を配らない：</b>開発者に渡すのはゲートウェイのキーだけ。モデル本体の資格情報は Managed Identity でゲートウェイが持ちます。辞めた人の鍵を回収する、という作業が消えます。</div>
+
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>nginx の比喩は、APIM を知らない人にも一撃で通ります。「管制室が無人でもトラックは走り続ける」は、管理プレーンが落ちてもデータプレーンは動く、という重要な性質の説明でもあります。</p>
+    <p>Managed Identity の話は地味ですが、セキュリティ担当者に刺さります。「鍵を配らない構成にできる」は Gateway 方式の副次的だが大きい利点です。</p>
+  </div>
+</section>
+
+<section>
+  <div class="sid"><span class="n">3-2</span><span class="time">（3-1 の続き）</span></div>
+  <h3 class="title">ルールは、これだけ</h3>
+  <p class="msg">読ませるためではなく、<b>「この程度の記述で効く」と見てもらうため</b>のコードです。</p>
+<pre><span class="c">&lt;!-- ① 許可したモデル以外は通さない --&gt;</span>
+<span class="k">&lt;choose&gt;&lt;when</span> condition=<span class="s">"未承認モデルなら"</span><span class="k">&gt;</span>
+  <span class="k">&lt;return-response&gt;&lt;set-status</span> code=<span class="h">"403"</span> <span class="k">/&gt;&lt;/return-response&gt;</span>
+<span class="k">&lt;/when&gt;&lt;/choose&gt;</span>
+
+<span class="c">&lt;!-- ② 上限を超えたら止める --&gt;</span>
+<span class="k">&lt;llm-token-limit</span> counter-key=<span class="s">"@(context.Subscription.Id)"</span>
+                 token-quota=<span class="h">"{{llm-monthly-token-quota}}"</span> <span class="k">/&gt;</span></pre>
+  <div class="caption">実際のポリシー（抜粋・8行）。単価や上限は <code>{{ }}</code> で外出しし、XML には数字を書きません。</div>
+
+  <div class="why"><b>なぜ外出しするのか：</b>単価は必ず変わります。値をコードに埋めると、変わった瞬間に嘘の金額を報告し始めます。</div>
+
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>コードは読み上げません。「4行で1つのルール」という粒度感だけ伝えます。</p>
+    <p>counter-key にサブスクリプション ID を指定している点が肝で、これでチーム単位にカウンタが分離します。検証でも team-a と team-b の残量が独立していることを確認済みです。</p>
+  </div>
+</section>
+
+<section>
+  <div class="sid"><span class="n">3-3</span><span class="time">3分</span></div>
+  <h3 class="title">デモ：CLI から見ると、ただの OpenAI 互換</h3>
+  <p class="msg">使う側は<b>接続先を差し替えるだけ</b>。学習コストをゼロにするのが狙いです。</p>
+  <div class="stats">
+    <div class="stat green"><div class="v">200</div><div class="l">許可したモデル → 通る</div></div>
+    <div class="stat red"><div class="v">403</div><div class="l">許していないモデル → 弾く</div></div>
+    <div class="stat blue"><div class="v">3種</div><div class="l">Codex CLI ／ Copilot CLI ／ 他</div></div>
+  </div>
+  <div class="why"><b>「勝手に増える」問題への備え：</b>モデルを1つ追加すると、ゲートウェイ側で何もしなくても呼べてしまいます。だから許可リストを明示的に持ちます。</div>
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>ここは録画を流します。ライブデモは避けます（当日のクォータ制限やエラーのリスクがあるため）。</p>
+    <p>録画では、許可モデルで 200 が返る → モデル名を変えて 403 が返る、の順に見せます。403 のレスポンスボディに <code>model_not_approved</code> と出るところまで映します。</p>
+  </div>
+</section>
+
+<section>
+  <div class="sid"><span class="n">3-4</span><span class="time">3分 ・壁①</span></div>
+  <h3 class="title">壁① 「1万円で止めて」が書けない</h3>
+  <p class="msg">ゲートウェイが数えられるのは<b>トークンだけ</b>。金額という単位を知りません。</p>
+
+  <div class="flow">
+    <div class="step s1"><div class="lbl">たとえば</div><div class="body">
+      <b>グラム売りの量り売り</b>
+      店員さんは「何グラム買ったか」は正確に数えられます。でも値札を持っていません。金額にするには、こちらが単価表を用意する必要があります。
+    </div></div>
+    <div class="step s2"><div class="lbl">実際には</div><div class="body">
+      <b>単価は Azure の価格 API から自動取得する</b>
+      手で書くと必ず古くなります。取得した値を設定として外に置き、ポリシーはそれを参照します。
+    </div></div>
+    <div class="step s3"><div class="lbl">ただし</div><div class="body">
+      <b>ここは完全には自動化できませんでした</b>
+      価格 API 上の品名がモデル名と一致せず、対応表を人間が維持する必要があります。「自動化しきれない部分」が残ります。
+    </div></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat blue"><div class="v">$5.0</div><div class="l">入力 100万トークンあたり（実測取得値）</div></div>
+    <div class="stat blue"><div class="v">$30.0</div><div class="l">出力 100万トークンあたり（実測取得値）</div></div>
+    <div class="stat amber"><div class="v">手動</div><div class="l">品名とモデル名の対応付け</div></div>
+  </div>
+
+  <div class="why"><b>入力と出力で単価が6倍違う：</b>だから「トークン数」でひとまとめに数えると、金額は簡単にずれます。入出力を分けて計算しています。</div>
+
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>価格 API から取れる値は「割引なしの定価」であり、実際の契約単価ではない点を必ず添えます。ここを曖昧にすると、この後の推定額が独り歩きします。</p>
+    <p>対応表を手で維持する話は、地味ですが正直な知見です。「全部自動化できました」と言わないことが、この発表の信頼性を支えます。</p>
+  </div>
+</section>
+
+<section>
+  <div class="sid"><span class="n">3-5</span><span class="time">2分 ・壁② ★実測</span></div>
+  <h3 class="title">壁② レジを通す前に、金額が分からない</h3>
+  <p class="msg">これが本命です。<b>消費量は、応答が返るまで確定しません。</b></p>
+
+  <div class="flow">
+    <div class="step s1"><div class="lbl">たとえば</div><div class="body">
+      <b>値札のない買い物</b>
+      カゴに入れた時点では値段が分かりません。レジを通して初めて金額が出ます。「予算1万円を超えたら買わせない」を、レジ<b style="display:inline;font-weight:800;">前</b>に実行できないのです。
+    </div></div>
+    <div class="step s2"><div class="lbl">AI では</div><div class="body">
+      <b>出力の長さが事前に分からない</b>
+      同じ質問でも、返答が3行か30行かで消費量が変わります。だから受付時点では「たぶんこれくらい」としか言えません。
+    </div></div>
+    <div class="step s3"><div class="lbl">結果として</div><div class="body">
+      <b>上限は「超えうる」</b>
+      特に複数のリクエストが同時に来ると、全部が「まだ残っている」と判定されて通ってしまいます。
+    </div></div>
+  </div>
+
+  <div class="art">
+    <svg viewBox="0 0 900 290" role="img" aria-label="逐次実行では上限内、同時実行では上限を61パーセント超過した実測結果">
+      <g font-family="inherit">
+        <line x1="60" y1="118" x2="860" y2="118" stroke="#c2352b" stroke-width="2.5" stroke-dasharray="9 6"/>
+        <text x="860" y="108" text-anchor="end" font-size="14" font-weight="800" fill="#c2352b">上限 1,000 トークン</text>
+        <rect x="130" y="126" width="210" height="90" rx="9" fill="#e1f5ec" stroke="#12855a" stroke-width="2"/>
+        <text x="235" y="174" text-anchor="middle" font-size="32" font-weight="800" fill="#12855a">961</text>
+        <text x="235" y="199" text-anchor="middle" font-size="14" fill="#12855a">上限の中</text>
+        <text x="235" y="246" text-anchor="middle" font-size="16" font-weight="700">1件ずつ 3回</text>
+        <rect x="560" y="46" width="210" height="170" rx="9" fill="#ffe7e4" stroke="#c2352b" stroke-width="2"/>
+        <text x="665" y="142" text-anchor="middle" font-size="38" font-weight="800" fill="#c2352b">1,611</text>
+        <text x="665" y="173" text-anchor="middle" font-size="16" font-weight="800" fill="#c2352b">61% 超過</text>
+        <text x="665" y="197" text-anchor="middle" font-size="13" fill="#c2352b">5件とも 200 で通過</text>
+        <text x="665" y="246" text-anchor="middle" font-size="16" font-weight="700">5件 同時</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="stats">
+    <div class="stat green"><div class="v">961</div><div class="l">逐次3回：超過なし</div></div>
+    <div class="stat red"><div class="v">+57.9%</div><div class="l">同時5件：1,579 トークン</div></div>
+    <div class="stat red"><div class="v">+61.1%</div><div class="l">同時5件（再現）：1,611 トークン</div></div>
+  </div>
+
+  <div class="why"><b>2回試して2回とも超過：</b>まぐれではありません。これは実装の不備ではなく、<b>「消費量が事前に分からない」ことの必然的な帰結</b>です。</div>
+
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>この発表で一番見せたい数字です。時間をかけて間を取ります。「上限1,000に対して1,611通っています」と読み上げてから、「しかも全部エラーにならず正常応答しています」と足します。</p>
+    <p>再現性を強調します。1回だけなら偶然と言われますが、2回とも6割前後で超えています。</p>
+    <p>ここで「じゃあ使えないのか」という空気になるので、すぐ次のスライドで「そうではない、設計を変える」に繋ぎます。</p>
+  </div>
+</section>
+
+<section>
+  <div class="sid"><span class="n">3-6</span><span class="time">（3-5 の続き）</span></div>
+  <h3 class="title">数え終わるのにも、時間がかかる</h3>
+  <p class="msg">使ってからグラフに出るまで、実測で<b>およそ2分</b>。</p>
+  <div class="art">
+    <svg viewBox="0 0 900 150" role="img" aria-label="リクエストからメトリクス反映まで実測126秒">
+      <g font-family="inherit">
+        <circle cx="112" cy="76" r="28" fill="#e5f0ff" stroke="#0b6bcb" stroke-width="2.5"/>
+        <text x="112" y="83" text-anchor="middle" font-size="17" font-weight="800" fill="#0b6bcb">使う</text>
+        <line x1="150" y1="76" x2="700" y2="76" stroke="#e0e5ee" stroke-width="9" stroke-linecap="round"/>
+        <line x1="150" y1="76" x2="700" y2="76" stroke="#c8d1de" stroke-width="9" stroke-linecap="round" stroke-dasharray="5 15"/>
+        <text x="425" y="54" text-anchor="middle" font-size="27" font-weight="800" fill="#b26a00">126 秒</text>
+        <text x="425" y="110" text-anchor="middle" font-size="14" fill="#5c6675">この間、数字は見えない</text>
+        <circle cx="740" cy="76" r="28" fill="#fff3dd" stroke="#b26a00" stroke-width="2.5"/>
+        <text x="740" y="83" text-anchor="middle" font-size="16" font-weight="800" fill="#b26a00">見える</text>
+      </g>
+    </svg>
+  </div>
+  <div class="why"><b>「即座に止める」は二重に無理：</b>消費量が事前に分からないうえ、分かった後も反映に2分かかります。この2つを認めるところから設計を始めました。</div>
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>2試行の中央値で126秒でした。環境や時間帯で変わるので「約2分」と丸めて話します。</p>
+    <p>この数字は、後の「デモ録画の注意」にも効きます。ライブでメトリクスを見せると無音の待ち時間が入るので、事前に溜めた状態を見せています、と正直に言います。</p>
+  </div>
+</section>
+
+<section>
+  <div class="sid"><span class="n">3-7</span><span class="time">4分 ・解</span></div>
+  <h3 class="title">「即座に」を捨てたら、簡単になった</h3>
+  <p class="msg">最初は台帳を持つ設計を考えました。<b>やめた結果、部品が減り、精度は上がりました。</b></p>
+
+  <div class="flow">
+    <div class="step s1"><div class="lbl">最初の案</div><div class="body">
+      <b>金額の台帳を持ち、その場で加算して止める</b>
+      直感的です。しかし通り道のキャッシュは「読んで・足して・書く」しかできず、同時アクセスで加算が消えます。しかも応答を細切れで返す使い方では、そもそも消費量を取り出せません。
+    </div></div>
+    <div class="step s2"><div class="lbl">やめた結果</div><div class="body">
+      <b>台帳（Redis）が不要になった</b>
+      「即座に止める」をやめた瞬間、加算の競合を考える必要がなくなりました。部品がひとつ丸ごと消えました。
+    </div></div>
+    <div class="step s3"><div class="lbl">さらに</div><div class="body">
+      <b>精度はむしろ上がった</b>
+      記録に徹する方式なら、同時アクセスでも取りこぼさず、細切れの応答でも数えられます。<b style="display:inline;font-weight:800;">諦めたら正確になりました。</b>
+    </div></div>
+  </div>
+
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>ここが設計の山場です。「やりたいことを削ったら、良くなった」という逆説を丁寧に話します。</p>
+    <p>技術的には、キャッシュに原子的な加算がないこと、ストリーミング時に応答本文から使用量が取れないこと（実地で確認済み）の2点が理由です。深追いせず結論だけ述べます。</p>
+  </div>
+</section>
+
+<section>
+  <div class="sid"><span class="n">3-8</span><span class="time">（3-7 の続き）</span></div>
+  <h3 class="title">1枚で守らない。4枚重ねて受ける</h3>
+  <p class="msg">性質の違う網を重ねます。<b>止めるものと、測るものを、分けます。</b></p>
+
+  <div class="layers">
+    <div class="layer l1"><div class="tag">天井</div>
+      <div class="d"><b>止める：確実だが、粗い</b>トークン数でしか止められず、多少はみ出す。それでも無限には流れない。</div></div>
+    <div class="layer l2"><div class="tag">計測</div>
+      <div class="d"><b>測る：正確だが、遅い</b>チーム別・モデル別に記録。ただし出るのは自前の単価表による「推定額」。</div></div>
+    <div class="layer l3"><div class="tag">検知</div>
+      <div class="d"><b>知らせる：推定額のしきい値超過</b>超えたら通知を飛ばす。止めはしない。</div></div>
+    <div class="layer l4"><div class="tag">答え合わせ</div>
+      <div class="d"><b>確かめる：唯一の本物の金額</b>実際の請求で突き合わせる。いちばん遅いが、これだけが正解。</div></div>
+  </div>
+
+  <div class="why">
+    <b>電気で言うなら：</b>ブレーカー（天井）と電力計（計測）は別部品です。
+    ブレーカーに「今月いくら使ったか」を聞いてはいけないし、電力計に「止めて」と言っても止まりません。
+    <b>1つの部品に両方やらせようとしたのが、最初の失敗でした。</b>
+  </div>
+
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>上3層はすべて自前の単価表に基づく「推定」です。割引契約や課金上の丸めは反映されません。4層目だけが本物の金額である、と明確に線を引きます。</p>
+    <p>4層目の予算アラートは「通知するだけで、支出を止めません」。止めるのは1層目です。この役割分担がこのスライドの結論です。</p>
+  </div>
+</section>
+
+<section>
+  <div class="sid"><span class="n">3-9</span><span class="time">（3-8 の続き）</span></div>
+  <h3 class="title">止まるときは、ちゃんと止まる</h3>
+  <p class="msg">はみ出すとはいえ、青天井ではありません。<b>止まり方は種類が分かれます。</b></p>
+  <div class="stats">
+    <div class="stat amber"><div class="v">429</div><div class="l">短時間に使いすぎた（レート制限）</div></div>
+    <div class="stat red"><div class="v">403</div><div class="l">決めた総量を使い切った（クォータ）</div></div>
+    <div class="stat blue"><div class="v">403</div><div class="l">許可していないモデルを呼んだ</div></div>
+  </div>
+  <div class="why"><b>使い方を間違えない：</b>これは「ぴったり止まる財布」ではなく、「多少はみ出すが、暴走はさせない天井」です。そう理解して使うことが大事です。</div>
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>レート制限とクォータで返るコードが違う点は、実際に両方を再現して確認しました。運用で監視する際、この2つを区別しないと原因の切り分けができません。</p>
+    <p>検証は上限を極小にした専用の経路で行っています。本番相当の経路でやるとカウンタが戻せなくなるためです。</p>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<div class="chapter"><div class="ch">SECTION 4 ／ 5分</div><h2>AI Gateway tier という新しい選択肢</h2></div>
+
+<section>
+  <div class="sid"><span class="n">4-1</span><span class="time">2分</span></div>
+  <h3 class="title">同じことが、設定画面でできるようになる</h3>
+  <p class="msg">パブリックプレビューの新しい選択肢です。<b>XML もポリシー式も書きません。</b></p>
+  <div class="layers">
+    <div class="layer l2"><div class="tag">速い</div><div class="d"><b>約1分で用意できる</b>スケールの計画が不要。今日の構成は、立ち上がりを待つ時間が長かった。</div></div>
+    <div class="layer l2"><div class="tag">簡単</div><div class="d"><b>ポリシーは画面上のカード</b>XML を書いたり、式を書いたりする必要がない。</div></div>
+    <div class="layer l2"><div class="tag">新しい</div><div class="d"><b>推論トークンを分けて観測できる</b>これは今日使った構成にはない利点。</div></div>
+  </div>
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>ここは公式ドキュメントで確認した内容であり、私自身が実環境で検証したものではない、と明示します。今日の実測データと混ぜないことが重要です。</p>
+  </div>
+</section>
+
+<section>
+  <div class="sid"><span class="n">4-2</span><span class="time">3分</span></div>
+  <h3 class="title">それでも、今回は使いませんでした</h3>
+  <p class="msg">好みの問題ではなく、<b>事実として要件に合いませんでした。</b></p>
+  <div class="layers">
+    <div class="layer l1"><div class="tag">理由①</div><div class="d"><b>Japan East にまだない</b>提供リージョンが限られており、モデルと同居させられない。</div></div>
+    <div class="layer l1"><div class="tag">理由②</div><div class="d"><b>任意のカスタム項目を付けられない</b>観測できる項目が固定。「チーム別・単価つき」で記録する今日のやり方が取れない。</div></div>
+    <div class="layer l1"><div class="tag">理由③</div><div class="d"><b>キーの範囲が全体スコープ</b>公開している全モデルにアクセスできてしまい、資産単位で絞れない。</div></div>
+  </div>
+  <div class="why">
+    <b>そして、これは思想の違いでもあります。</b>公式ドキュメントは、トークン制限は「スパイクの削減と利用シグナルの提供」のためであり、
+    <b>財務報告には請求情報や Cost Management を使うように</b>と書いています。
+    つまり金額管理は「できない」のではなく、<b>ゲートウェイの仕事ではないと決めている</b>ということです。
+  </div>
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>ここが今日の裏テーマの答え合わせになります。私は「金額で止めたい」と思って作りましたが、製品側は最初から「それは別の場所でやるべき」と設計している。壁にぶつかったのは当然だったわけです。</p>
+    <p>将来への期待として、カスタム項目の追加とアセット単位のキーが来れば、今日の構成の多くはこちらに寄せられる、と述べます。</p>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<div class="chapter"><div class="ch">SECTION 5 ／ 3分</div><h2>まとめ</h2></div>
+
+<section class="end">
+  <div class="sid"><span class="n">5</span><span class="time">3分</span></div>
+  <h3 class="title">持ち帰ってほしい3つ</h3>
+  <p class="msg">今日の話を1枚にすると、これだけです。</p>
+  <div class="layers">
+    <div class="layer l1"><div class="tag">1</div>
+      <div class="d"><b>トークンは、応答が返るまで確定しない</b>だから「金額で即座に止める」は原理的に難しい。実測でも上限を6割超えました。</div></div>
+    <div class="layer l2"><div class="tag">2</div>
+      <div class="d"><b>「即座に」を要件から外したら、Redis が要らなくなり、精度はむしろ上がった</b>要件を削ることが、設計を良くすることがあります。</div></div>
+    <div class="layer l4"><div class="tag">3</div>
+      <div class="d"><b>止めるものと測るものを、分けて持つ</b>ブレーカーと電力計を、1つの部品にしない。</div></div>
+  </div>
+  <div class="oneline">
+    今日扱わなかった Optimize（無駄を減らす）は、<br>ゲートウェイでは解けない領域。それはまた別の機会に。
+  </div>
+  <div class="notes">
+    <div class="h">スピーカーノート</div>
+    <p>3点を読み上げて終わりにします。付け足しません。</p>
+    <p>最後の1行は、次回への引きであると同時に「ゲートウェイで全部は解けない」という線引きの再確認です。</p>
+  </div>
+</section>
+
+<div class="foot">
+  数値はすべて、この発表のために構築した検証環境で実際に取得したものです。<br>
+  Azure API Management (Developer) ／ Microsoft Foundry ／ Japan East<br>
+  検証コードと結果は公開リポジトリで再現できます。
+</div>
+
+</div>
+</body>
+</html>

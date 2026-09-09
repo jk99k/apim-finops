@@ -1,0 +1,234 @@
+<!--
+  main-policy.xml
+  APIM を AI Gateway として使うためのポリシー。
+
+  やっていること (上から順に):
+    1. モデル一覧の応答      許可したモデルだけをクライアントに見せる
+    2. allowlist            未承認モデルを 403 で遮断する
+    3. 単価の解決            Named values の単価表から入力/出力単価を引く
+    4. 利用者の識別          チーム (キー) と個人 (ヘッダー) を分けて把握する
+    5. token-limit          天井。上限を超えたら止める
+    6. emit-token-metric    計測。誰が何をどれだけ使ったかを記録する
+    7. バックエンド認証      Managed Identity で Foundry を呼ぶ
+
+  ポリシー式は C# で書く。書き方の注意:
+    - 属性値の中では XML の特殊文字をエスケープする
+      ジェネリクス <T> は &lt;T&gt;、論理積 && は &amp;&amp;、文字列の " は &quot;
+    - C# のシングルクォートは文字リテラルなので、文字列の代わりには使えない
+    - 属性値の中で // 行コメントは使えない
+      APIM が改行をスペースに畳むため、// 以降が閉じ波括弧までコメント扱いになる
+-->
+<policies>
+    <inbound>
+        <base />
+
+        <!-- ===== 1. モデル一覧 (GET /models) =====
+             OpenAI 互換クライアントは接続時にモデル一覧を取得して検証することがある。
+             バックエンドには転送せず、allowlist の内容をそのまま返す。
+             許可していないモデルは、クライアントの選択肢にも現れない。 -->
+        <choose>
+            <when condition="@(context.Request.Method == &quot;GET&quot; &amp;&amp; context.Request.Url.Path.EndsWith(&quot;/models&quot;))">
+                <return-response>
+                    <set-status code="200" reason="OK" />
+                    <set-header name="Content-Type" exists-action="override">
+                        <value>application/json</value>
+                    </set-header>
+                    <set-body>@{
+                        var allowed = "{{llm-allowed-models}}";
+                        var items = new JArray();
+
+                        foreach (var name in allowed.Split(',')) {
+                            if (name.Trim().Length == 0) { continue; }
+
+                            items.Add(new JObject(
+                                new JProperty("id", name.Trim()),
+                                new JProperty("object", "model"),
+                                new JProperty("owned_by", "azure-apim")
+                            ));
+                        }
+
+                        return new JObject(
+                            new JProperty("object", "list"),
+                            new JProperty("data", items)
+                        ).ToString();
+                    }</set-body>
+                </return-response>
+            </when>
+        </choose>
+
+        <!-- ===== 2. allowlist =====
+             リクエストボディの model フィールドを見て、承認済みモデルかを判定する。
+             バックエンドを呼ぶ前に弾くことで、無駄な課金を避ける。
+
+             Foundry リソースを取り込むと、そこに追加したモデルは
+             APIM 側で何もしなくても呼べてしまう。だから明示的な許可リストを持つ。 -->
+        <set-variable name="requestModel" value="@{
+            var body = context.Request.Body?.As&lt;JObject&gt;(preserveContent: true);
+
+            if (body == null || body[&quot;model&quot;] == null) {
+                return &quot;&quot;;
+            }
+            return (string)body[&quot;model&quot;];
+        }" />
+
+        <set-variable name="isModelAllowed" value="@{
+            var model = (string)context.Variables[&quot;requestModel&quot;];
+            var allowed = &quot;{{llm-allowed-models}}&quot;;
+
+            foreach (var name in allowed.Split(',')) {
+                if (name.Trim() == model) {
+                    return true;
+                }
+            }
+            return false;
+        }" />
+
+        <choose>
+            <when condition="@(!(bool)context.Variables[&quot;isModelAllowed&quot;])">
+                <return-response>
+                    <set-status code="403" reason="Forbidden" />
+                    <set-header name="Content-Type" exists-action="override">
+                        <value>application/json</value>
+                    </set-header>
+                    <set-body>@{
+                        var model = (string)context.Variables["requestModel"];
+                        var message = "Model '" + model + "' is not in the approved allowlist.";
+
+                        return new JObject(
+                            new JProperty("error", new JObject(
+                                new JProperty("code", "model_not_approved"),
+                                new JProperty("message", message)
+                            ))
+                        ).ToString();
+                    }</set-body>
+                </return-response>
+            </when>
+        </choose>
+
+        <!-- ===== 3. 単価の解決 =====
+             単価はポリシーに直接書かず、Named values の単価表から引く。
+             書式: "model:入力単価:出力単価,..."  (USD / 100万トークン)
+
+             入力と出力では単価が数倍違うため、必ず両方を持つ。
+             単価表にないモデルは __default__ (最高単価) にフォールバックさせ、
+             自動化が失敗したときに「過小計上 = 予算突破」ではなく
+             「過大計上 = 早めに気付く」側に倒れるようにする。 -->
+        <set-variable name="usdPerMillionInput" value="@{
+            var model = (string)context.Variables[&quot;requestModel&quot;];
+            var priceTable = &quot;{{llm-price-table}}&quot;;
+            string matched = null;
+            string fallback = null;
+
+            foreach (var row in priceTable.Split(',')) {
+                var columns = row.Split(':');
+                if (columns.Length != 3) { continue; }
+
+                if (columns[0].Trim() == model) {
+                    matched = columns[1].Trim();
+                }
+                if (columns[0].Trim() == &quot;__default__&quot;) {
+                    fallback = columns[1].Trim();
+                }
+            }
+            return matched ?? fallback ?? &quot;0&quot;;
+        }" />
+
+        <set-variable name="usdPerMillionOutput" value="@{
+            var model = (string)context.Variables[&quot;requestModel&quot;];
+            var priceTable = &quot;{{llm-price-table}}&quot;;
+            string matched = null;
+            string fallback = null;
+
+            foreach (var row in priceTable.Split(',')) {
+                var columns = row.Split(':');
+                if (columns.Length != 3) { continue; }
+
+                if (columns[0].Trim() == model) {
+                    matched = columns[2].Trim();
+                }
+                if (columns[0].Trim() == &quot;__default__&quot;) {
+                    fallback = columns[2].Trim();
+                }
+            }
+            return matched ?? fallback ?? &quot;0&quot;;
+        }" />
+
+        <!-- ===== 4. 利用者の識別 =====
+             チーム = APIM サブスクリプション (キーを持っているかで決まる。詐称できない)
+             個人   = リクエストヘッダー X-User-Id (クライアントの自己申告)
+
+             性質が違うので、用途も分ける。
+             チームは統制 (止める) の単位に使える。
+             個人は詐称できるので、可視化と按分だけに使う。
+             未指定は unassigned にまとめ、「名乗らない利用」も見えるようにする。
+
+             文字数を 64 に制限しているのは、Azure Monitor が
+             1 ディメンションあたり 100 種類までしか追跡しないため。
+             異常に長い値でスロットを浪費しないようにしている。 -->
+        <set-variable name="userId" value="@{
+            var raw = context.Request.Headers.GetValueOrDefault(&quot;X-User-Id&quot;, &quot;&quot;);
+
+            if (string.IsNullOrWhiteSpace(raw)) {
+                return &quot;unassigned&quot;;
+            }
+
+            var trimmed = raw.Trim();
+            return trimmed.Length &lt;= 64 ? trimmed : trimmed.Substring(0, 64);
+        }" />
+
+        <!-- ===== 5. 天井 (token-limit) =====
+             サブスクリプション単位で月次のトークン上限を課す。
+             個人単位で止めないのは、X-User-Id が自己申告で詐称できるためと、
+             個人ごとの上限は運用が回らなくなりやすいため。
+
+             なお消費トークン数はバックエンドの応答を受け取るまで確定しない。
+             そのため同時リクエストは設定値を一時的に超過し得る (実測で確認済み)。 -->
+        <llm-token-limit
+            counter-key="@(context.Subscription.Id)"
+            tokens-per-minute="100000"
+            token-quota="{{llm-monthly-token-quota}}"
+            token-quota-period="Monthly"
+            estimate-prompt-tokens="true"
+            remaining-quota-tokens-variable-name="remainingQuotaTokens"
+            remaining-quota-tokens-header-name="x-remaining-quota-tokens" />
+
+        <!-- ===== 6. 計測 (emit-token-metric) =====
+             カスタムディメンションは 1 ポリシーあたり最大 5 個。ここが上限いっぱい。
+             メトリクスは Prompt Tokens / Completion Tokens と名前が分かれて記録されるため、
+             KQL 側で name に応じて入力単価・出力単価を選び分けて金額換算できる。 -->
+        <llm-emit-token-metric namespace="llmops">
+            <dimension name="Team" value="@(context.Subscription.Name)" />
+            <dimension name="User" value="@((string)context.Variables[&quot;userId&quot;])" />
+            <dimension name="Model" value="@((string)context.Variables[&quot;requestModel&quot;])" />
+            <dimension name="UsdPerMillionInput" value="@((string)context.Variables[&quot;usdPerMillionInput&quot;])" />
+            <dimension name="UsdPerMillionOutput" value="@((string)context.Variables[&quot;usdPerMillionOutput&quot;])" />
+        </llm-emit-token-metric>
+
+        <!-- ===== 7. バックエンド =====
+             開発者には Foundry の資格情報を配らない。
+             ゲートウェイが Managed Identity で認証する。 -->
+        <set-backend-service backend-id="foundry-backend" />
+
+        <!-- OpenAI 互換クライアントは deployment 名を URL に含めず、
+             ボディの model で宛先を指定する。Foundry のパス形式に書き換える。 -->
+        <choose>
+            <when condition="@(context.Request.Url.Path.EndsWith(&quot;/chat/completions&quot;) &amp;&amp; !context.Request.Url.Path.Contains(&quot;/deployments/&quot;))">
+                <rewrite-uri template="@(&quot;/deployments/&quot; + (string)context.Variables[&quot;requestModel&quot;] + &quot;/chat/completions?api-version=2024-10-21&quot;)" copy-unmatched-params="false" />
+            </when>
+        </choose>
+
+        <authentication-managed-identity resource="https://cognitiveservices.azure.com" output-token-variable-name="msi-access-token" ignore-error="false" />
+        <set-header name="Authorization" exists-action="override">
+            <value>@("Bearer " + (string)context.Variables["msi-access-token"])</value>
+        </set-header>
+    </inbound>
+    <backend>
+        <base />
+    </backend>
+    <outbound>
+        <base />
+    </outbound>
+    <on-error>
+        <base />
+    </on-error>
+</policies>

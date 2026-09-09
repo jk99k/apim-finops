@@ -1,0 +1,17 @@
+{
+  "_comment": [
+    "ローカル実行用の設定ファイル。実際の値は含めない (このファイルは公開リポジトリに入る)。",
+    "ローカルで動かす場合は各値を自分の環境のものに置き換えること。",
+    "認証は DefaultAzureCredential なので、az login 済みであれば資格情報の設定は不要。"
+  ],
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "PRICE_SYNC_SCHEDULE": "0 0 18 * * *",
+    "AZURE_SUBSCRIPTION_ID": "<サブスクリプション ID>",
+    "APIM_RESOURCE_GROUP": "<APIM のリソースグループ名>",
+    "APIM_NAME": "<APIM のサービス名>",
+    "PRICE_NAMED_VALUE": "llm-price-table"
+  }
+}

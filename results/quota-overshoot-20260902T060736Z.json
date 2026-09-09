@@ -1,0 +1,102 @@
+[
+  {
+    "scenario": "逐次実行",
+    "tokens_per_minute_limit": 1000,
+    "requests_sent": 3,
+    "requests_succeeded_200": 3,
+    "requests_throttled_429": 0,
+    "other_status_codes": [],
+    "actual_tokens_consumed": 961,
+    "overshoot_tokens": -39,
+    "overshoot_percent": -3.9,
+    "per_request": [
+      {
+        "index": 1,
+        "status_code": 200,
+        "tokens_consumed": 324,
+        "remaining_tokens": 676,
+        "total_tokens_from_body": 324,
+        "elapsed_sec": 5.41,
+        "error": null
+      },
+      {
+        "index": 2,
+        "status_code": 200,
+        "tokens_consumed": 315,
+        "remaining_tokens": 361,
+        "total_tokens_from_body": 315,
+        "elapsed_sec": 6.56,
+        "error": null
+      },
+      {
+        "index": 3,
+        "status_code": 200,
+        "tokens_consumed": 322,
+        "remaining_tokens": 39,
+        "total_tokens_from_body": 322,
+        "elapsed_sec": 7.85,
+        "error": null
+      }
+    ],
+    "timestamp": "2026-09-02T06:06:19.384756+00:00"
+  },
+  {
+    "scenario": "同時実行 (並列数 5)",
+    "tokens_per_minute_limit": 1000,
+    "requests_sent": 5,
+    "requests_succeeded_200": 5,
+    "requests_throttled_429": 0,
+    "other_status_codes": [],
+    "actual_tokens_consumed": 1579,
+    "overshoot_tokens": 579,
+    "overshoot_percent": 57.9,
+    "per_request": [
+      {
+        "index": 1,
+        "status_code": 200,
+        "tokens_consumed": 324,
+        "remaining_tokens": 676,
+        "total_tokens_from_body": 324,
+        "elapsed_sec": 5.9,
+        "error": null
+      },
+      {
+        "index": 2,
+        "status_code": 200,
+        "tokens_consumed": 300,
+        "remaining_tokens": 700,
+        "total_tokens_from_body": 300,
+        "elapsed_sec": 5.97,
+        "error": null
+      },
+      {
+        "index": 3,
+        "status_code": 200,
+        "tokens_consumed": 318,
+        "remaining_tokens": 682,
+        "total_tokens_from_body": 318,
+        "elapsed_sec": 6.7,
+        "error": null
+      },
+      {
+        "index": 4,
+        "status_code": 200,
+        "tokens_consumed": 313,
+        "remaining_tokens": 687,
+        "total_tokens_from_body": 313,
+        "elapsed_sec": 6.33,
+        "error": null
+      },
+      {
+        "index": 5,
+        "status_code": 200,
+        "tokens_consumed": 324,
+        "remaining_tokens": 676,
+        "total_tokens_from_body": 324,
+        "elapsed_sec": 6.39,
+        "error": null
+      }
+    ],
+    "timestamp": "2026-09-02T06:07:36.121126+00:00"
+  }
+]

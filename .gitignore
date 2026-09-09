@@ -1,0 +1,69 @@
+# =============================================================================
+# 公開リポジトリのため、資格情報や環境固有の値が混入しないようにする
+# =============================================================================
+
+# --- 資格情報・環境固有の設定 ---
+# Functions のローカル設定。接続文字列やサブスクリプション ID が入るため絶対に含めない
+# (代わりに local.settings.json.example をコミットしている)
+functions/local.settings.json
+local.settings.json
+
+# azd が作る環境ごとの設定。サブスクリプション ID やテナント ID が入る
+.azure/
+
+# 汎用的な環境変数ファイル
+.env
+.env.*
+!.env.example
+
+# 証明書・鍵
+*.pem
+*.key
+*.pfx
+*.p12
+
+# 公開前スキャンの環境固有パターン。
+# 「隠したい文字列そのもの」を検出パターンとして書くファイルなので、
+# これをコミットすると本末転倒になる。絶対に含めない。
+.secretscan-patterns
+
+# --- 一時ファイル ---
+# 動作確認で作った JSON ボディなどを誤ってコミットしないため。
+# results/ 配下の検証結果は除外しないよう、ルート直下に限定する。
+/t*.json
+/q*.json
+/u*.json
+/v*.json
+/a.json
+/b.json
+/r.json
+/sso.json
+/cost.json
+/pol.json
+*.tmp
+*.bak
+
+# Bicep のビルド出力 (ARM テンプレート)
+*.bicep.json
+temp*.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.python-version
+
+# --- Node ---
+node_modules/
+
+# --- OS / エディタ ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- 検証結果 ---
+# results/ 自体はコミットする (発表で使う実測データのため)。
+# ただし個別に除外したいものがあればここに追記する。

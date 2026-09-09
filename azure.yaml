@@ -1,0 +1,9 @@
+# azd (Azure Developer CLI) 設定
+# `azd up` で infra/main.bicep をサブスクリプションスコープにデプロイする
+name: apim-llmops
+metadata:
+  template: apim-llmops@0.1.0
+infra:
+  provider: bicep
+  path: infra
+  module: main

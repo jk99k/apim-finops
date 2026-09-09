@@ -1,0 +1,71 @@
+<!--
+  quota-demo-policy.xml
+  トークン上限の実地検証 (検証項目 A3 / B6) 専用のポリシー。
+
+  なぜ本番用 API と分けるのか:
+    llm-token-limit のカウンタは counter-key ごとに APIM 側で保持され、
+    一度消費すると期間が来るまで戻せない。
+    本番用 API の上限を書き換えて検証すると本番側の統制まで巻き添えになるため、
+    専用 API + 専用サブスクリプション (quota-demo) を用意している。
+
+  レート制限とクォータは別物であることに注意 (公式ドキュメントおよび実測で確認):
+    - tokens-per-minute (レート制限) の超過 -> 429 Too Many Requests
+    - token-quota       (クォータ)     の超過 -> 403 Forbidden
+
+  上限値を Named values 経由にしている理由:
+    2つの実験を 1 つの API で切り替えて再現できるようにするため。
+    ポリシー XML を書き換えずに scripts/set_quota_demo_limits.py で値を変えられる。
+
+      実験1「レート制限の超過量を測る」(B6)
+        tokens-per-minute を小さく (例: 1000)、token-quota を十分大きく (例: 1000000)
+        -> 同時実行で上限を超えて消費されることを観測できる
+
+      実験2「クォータ超過で 403 が返ることを見る」(A3)
+        tokens-per-minute を十分大きく (例: 100000)、token-quota を小さく (例: 500)
+        -> レート制限に邪魔されずクォータ超過の 403 に到達できる
+
+  ここでの値はデモ用であり運用値ではない。
+  実運用の上限は本番 API 側の Named value {{llm-monthly-token-quota}} で管理する。
+-->
+<policies>
+    <inbound>
+        <base />
+
+        <llm-token-limit
+            counter-key="@(context.Subscription.Id)"
+            tokens-per-minute="{{llm-demo-tokens-per-minute}}"
+            token-quota="{{llm-demo-token-quota}}"
+            token-quota-period="Hourly"
+            estimate-prompt-tokens="true"
+            remaining-tokens-header-name="x-remaining-tokens"
+            tokens-consumed-header-name="x-tokens-consumed"
+            remaining-quota-tokens-header-name="x-remaining-quota-tokens" />
+
+        <!-- 検証用の経路であっても、必ず計測する。
+             計測していない経路は課金だけが発生し、推定コストと実請求が乖離する。
+             実際、この計測を入れる前は検証分が丸ごと集計から漏れていた。
+             「測っていない場所で使われる」ことが、コスト管理では最も危険。 -->
+        <llm-emit-token-metric namespace="llmops">
+            <dimension name="Team" value="@(context.Subscription.Name)" />
+            <dimension name="User" value="quota-demo" />
+            <dimension name="Model" value="chat-gpt-5.6-sol" />
+            <dimension name="UsdPerMillionInput" value="5.0" />
+            <dimension name="UsdPerMillionOutput" value="30.0" />
+        </llm-emit-token-metric>
+
+        <set-backend-service backend-id="foundry-backend" />
+        <authentication-managed-identity resource="https://cognitiveservices.azure.com" output-token-variable-name="msi-access-token" ignore-error="false" />
+        <set-header name="Authorization" exists-action="override">
+            <value>@("Bearer " + (string)context.Variables["msi-access-token"])</value>
+        </set-header>
+    </inbound>
+    <backend>
+        <base />
+    </backend>
+    <outbound>
+        <base />
+    </outbound>
+    <on-error>
+        <base />
+    </on-error>
+</policies>

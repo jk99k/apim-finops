@@ -1,0 +1,5 @@
+# Azure Functions のランタイムが提供するパッケージ (azure-functions) 以外の依存のみを書く。
+# grpcio に依存する azure-functions-worker は入れない (公式ガイダンス)。
+azure-functions
+azure-identity>=1.19.0
+requests>=2.31.0

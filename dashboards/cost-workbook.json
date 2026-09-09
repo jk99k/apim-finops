@@ -1,0 +1,280 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "## LLM 利用料の可視化\n\nAPI Management を通過した LLM 利用を、**チーム別**と**個人別**で集計します。\n\n表示している金額は「単価表 × トークン数」による**推定値**です。割引契約や課金上の丸めは反映されないため、実際の請求額とは一致しません。確定額は **コスト管理 > コスト分析** を参照してください。"
+      },
+      "name": "header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "p-range",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "期間",
+            "type": 4,
+            "isRequired": true,
+            "typeSettings": {
+              "selectableValues": [
+                { "durationMs": 3600000 },
+                { "durationMs": 86400000 },
+                { "durationMs": 604800000 },
+                { "durationMs": 2592000000 }
+              ]
+            },
+            "value": { "durationMs": 604800000 }
+          },
+          {
+            "id": "p-team",
+            "version": "KqlParameterItem/1.0",
+            "name": "Team",
+            "label": "チーム",
+            "type": 2,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "typeSettings": { "additionalResourceOptions": ["value::all"], "showDefault": false },
+            "query": "customMetrics\n| where isnotempty(tostring(customDimensions['Team']))\n| distinct Team = tostring(customDimensions['Team'])\n| order by Team asc",
+            "queryType": 0,
+            "resourceType": "microsoft.insights/components",
+            "crossComponentResources": ["__APP_INSIGHTS_ID__"],
+            "value": ["value::all"]
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components"
+      },
+      "name": "parameters"
+    },
+    {
+      "type": 1,
+      "content": { "json": "### 全体サマリ" },
+      "name": "summary-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where name in ('Prompt Tokens', 'Completion Tokens')\n| extend Team = tostring(customDimensions['Team']),\n         UsdIn = todouble(customDimensions['UsdPerMillionInput']),\n         UsdOut = todouble(customDimensions['UsdPerMillionOutput'])\n| where isnotempty(Team)\n| where Team in ({Team})\n| extend UnitPrice = iff(name == 'Prompt Tokens', UsdIn, UsdOut)\n| summarize EstimatedUsd = round(sum(valueSum * UnitPrice / 1000000.0), 4)",
+        "size": 4,
+        "title": "推定コスト合計 (USD)",
+        "timeContext": { "durationMs": 0 },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "crossComponentResources": ["__APP_INSIGHTS_ID__"],
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": { "columnMatch": "EstimatedUsd", "formatter": 1 },
+          "leftContent": {
+            "columnMatch": "EstimatedUsd",
+            "formatter": 12,
+            "formatOptions": { "palette": "blue" },
+            "numberFormat": { "unit": 0, "options": { "style": "decimal", "maximumFractionDigits": 4 } }
+          },
+          "showBorder": false
+        }
+      },
+      "customWidth": "50",
+      "name": "total-cost"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where name == 'Total Tokens'\n| extend Team = tostring(customDimensions['Team'])\n| where isnotempty(Team)\n| where Team in ({Team})\n| summarize Tokens = sum(valueSum)",
+        "size": 4,
+        "title": "総トークン数",
+        "timeContext": { "durationMs": 0 },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "crossComponentResources": ["__APP_INSIGHTS_ID__"],
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": { "columnMatch": "Tokens", "formatter": 1 },
+          "leftContent": {
+            "columnMatch": "Tokens",
+            "formatter": 12,
+            "formatOptions": { "palette": "green" },
+            "numberFormat": { "unit": 0, "options": { "style": "decimal", "maximumFractionDigits": 0 } }
+          },
+          "showBorder": false
+        }
+      },
+      "customWidth": "50",
+      "name": "total-tokens"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### チーム別\n\n統制 (上限で止める) の単位です。API Management のサブスクリプションキー単位で分離されるため、**利用者側では詐称できません**。"
+      },
+      "name": "team-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where name in ('Prompt Tokens', 'Completion Tokens')\n| extend Team = tostring(customDimensions['Team']),\n         UsdIn = todouble(customDimensions['UsdPerMillionInput']),\n         UsdOut = todouble(customDimensions['UsdPerMillionOutput'])\n| where isnotempty(Team)\n| where Team in ({Team})\n| extend UnitPrice = iff(name == 'Prompt Tokens', UsdIn, UsdOut)\n| summarize InputTokens = sumif(valueSum, name == 'Prompt Tokens'),\n            OutputTokens = sumif(valueSum, name == 'Completion Tokens'),\n            EstimatedUsd = round(sum(valueSum * UnitPrice / 1000000.0), 4)\n          by Team\n| order by EstimatedUsd desc",
+        "size": 0,
+        "title": "チーム別の推定コスト",
+        "timeContext": { "durationMs": 0 },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "crossComponentResources": ["__APP_INSIGHTS_ID__"],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "EstimatedUsd",
+              "formatter": 8,
+              "formatOptions": { "palette": "blue" },
+              "numberFormat": { "unit": 0, "options": { "style": "decimal", "maximumFractionDigits": 4 } }
+            },
+            { "columnMatch": "InputTokens", "formatter": 0, "numberFormat": { "unit": 0, "options": { "style": "decimal", "maximumFractionDigits": 0 } } },
+            { "columnMatch": "OutputTokens", "formatter": 0, "numberFormat": { "unit": 0, "options": { "style": "decimal", "maximumFractionDigits": 0 } } }
+          ]
+        }
+      },
+      "customWidth": "50",
+      "name": "team-table"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where name in ('Prompt Tokens', 'Completion Tokens')\n| extend Team = tostring(customDimensions['Team']),\n         UsdIn = todouble(customDimensions['UsdPerMillionInput']),\n         UsdOut = todouble(customDimensions['UsdPerMillionOutput'])\n| where isnotempty(Team)\n| where Team in ({Team})\n| extend UnitPrice = iff(name == 'Prompt Tokens', UsdIn, UsdOut)\n| summarize EstimatedUsd = sum(valueSum * UnitPrice / 1000000.0) by bin(timestamp, 1h), Team\n| order by timestamp asc",
+        "size": 0,
+        "title": "チーム別の推移 (1時間ごと)",
+        "timeContext": { "durationMs": 0 },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "crossComponentResources": ["__APP_INSIGHTS_ID__"],
+        "visualization": "linechart"
+      },
+      "customWidth": "50",
+      "name": "team-trend"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### 個人別\n\n按分と気づきのための単位です。リクエストヘッダー `X-User-Id` の**自己申告**にもとづくため、統制の根拠にはできません。\n\n`unassigned` は、ヘッダーを送っていない利用です。ここが大きい場合は、CLI 側の設定が配布できていないことを意味します。"
+      },
+      "name": "user-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where name in ('Prompt Tokens', 'Completion Tokens')\n| extend Team = tostring(customDimensions['Team']),\n         User = tostring(customDimensions['User']),\n         UsdIn = todouble(customDimensions['UsdPerMillionInput']),\n         UsdOut = todouble(customDimensions['UsdPerMillionOutput'])\n| where isnotempty(Team)\n| where Team in ({Team})\n| extend User = iff(isempty(User), 'unassigned', User)\n| extend UnitPrice = iff(name == 'Prompt Tokens', UsdIn, UsdOut)\n| summarize Tokens = sum(valueSum),\n            EstimatedUsd = round(sum(valueSum * UnitPrice / 1000000.0), 4)\n          by Team, User\n| order by EstimatedUsd desc",
+        "size": 0,
+        "title": "個人別の推定コスト",
+        "timeContext": { "durationMs": 0 },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "crossComponentResources": ["__APP_INSIGHTS_ID__"],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "EstimatedUsd",
+              "formatter": 8,
+              "formatOptions": { "palette": "orange" },
+              "numberFormat": { "unit": 0, "options": { "style": "decimal", "maximumFractionDigits": 4 } }
+            },
+            { "columnMatch": "Tokens", "formatter": 0, "numberFormat": { "unit": 0, "options": { "style": "decimal", "maximumFractionDigits": 0 } } }
+          ]
+        }
+      },
+      "customWidth": "50",
+      "name": "user-table"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where name in ('Prompt Tokens', 'Completion Tokens')\n| extend Team = tostring(customDimensions['Team']),\n         User = tostring(customDimensions['User']),\n         UsdIn = todouble(customDimensions['UsdPerMillionInput']),\n         UsdOut = todouble(customDimensions['UsdPerMillionOutput'])\n| where isnotempty(Team)\n| where Team in ({Team})\n| extend User = iff(isempty(User), 'unassigned', User)\n| extend UnitPrice = iff(name == 'Prompt Tokens', UsdIn, UsdOut)\n| summarize EstimatedUsd = round(sum(valueSum * UnitPrice / 1000000.0), 4) by User\n| order by EstimatedUsd desc\n| take 15",
+        "size": 0,
+        "title": "利用の多い個人 (上位15)",
+        "timeContext": { "durationMs": 0 },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "crossComponentResources": ["__APP_INSIGHTS_ID__"],
+        "visualization": "barchart"
+      },
+      "customWidth": "50",
+      "name": "user-chart"
+    },
+    {
+      "type": 1,
+      "content": { "json": "### モデル別 / 統制の効き具合" },
+      "name": "model-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where name in ('Prompt Tokens', 'Completion Tokens')\n| extend Team = tostring(customDimensions['Team']),\n         Model = tostring(customDimensions['Model']),\n         UsdIn = todouble(customDimensions['UsdPerMillionInput']),\n         UsdOut = todouble(customDimensions['UsdPerMillionOutput'])\n| where isnotempty(Team)\n| where Team in ({Team})\n| extend UnitPrice = iff(name == 'Prompt Tokens', UsdIn, UsdOut)\n| summarize Tokens = sum(valueSum),\n            EstimatedUsd = round(sum(valueSum * UnitPrice / 1000000.0), 4)\n          by Model\n| order by EstimatedUsd desc",
+        "size": 0,
+        "title": "モデル別の推定コスト",
+        "timeContext": { "durationMs": 0 },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "crossComponentResources": ["__APP_INSIGHTS_ID__"],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "EstimatedUsd",
+              "formatter": 8,
+              "formatOptions": { "palette": "purple" },
+              "numberFormat": { "unit": 0, "options": { "style": "decimal", "maximumFractionDigits": 4 } }
+            },
+            { "columnMatch": "Tokens", "formatter": 0, "numberFormat": { "unit": 0, "options": { "style": "decimal", "maximumFractionDigits": 0 } } }
+          ]
+        }
+      },
+      "customWidth": "50",
+      "name": "model-table"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "requests\n| where resultCode in ('403', '429')\n| summarize Count = count() by resultCode\n| extend Reason = case(resultCode == '403', '許可外モデル または クォータ超過', resultCode == '429', 'レート制限 (短時間に集中)', 'その他')\n| project resultCode, Reason, Count",
+        "size": 0,
+        "title": "遮断されたリクエスト (統制が効いた回数)",
+        "timeContext": { "durationMs": 0 },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "crossComponentResources": ["__APP_INSIGHTS_ID__"],
+        "visualization": "table"
+      },
+      "customWidth": "50",
+      "name": "blocked-table"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n**推定値と確定額の違いについて**\n\nこのブックの金額は、API Management が記録したトークン数に単価表を掛けた推定値です。単価は Azure Retail Prices API から取得した定価であり、契約単価ではありません。\n\n確定した請求額は **コスト管理 > コスト分析**、予算に対する消化状況は **コスト管理 > 予算** で確認してください。"
+      },
+      "name": "footer"
+    }
+  ],
+  "fallbackResourceIds": ["__APP_INSIGHTS_ID__"],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

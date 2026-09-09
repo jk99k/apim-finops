@@ -1,0 +1,34 @@
+{
+  "_comment": [
+    "APIM で公開しているモデルデプロイ名と、Azure Retail Prices API の meterName の対応表。",
+    "この対応付けは API 側から自動判別できないため、人間が維持する必要がある。",
+    "(発表で扱う『自動化できない部分』の実例。meterName は表記ゆれが激しく、",
+    " モデル名の文字列一致だけでは安全に特定できない)",
+    "",
+    "meterName の読み方 (2026-09 時点の観測):",
+    "  Inp     = 入力トークン",
+    "  Opt     = 出力トークン",
+    "  Cd Inp  = キャッシュ読み取り入力トークン",
+    "  Cd Wr   = キャッシュ書き込みトークン",
+    "  ShortCo = ショートコンテキスト / LongCo = ロングコンテキスト",
+    "  Std Gl  = Standard Global (GlobalStandard デプロイ)",
+    "  PP      = Priority Processing",
+    "",
+    "本検証環境は GlobalStandard・ショートコンテキスト利用のため Std Gl / ShortCo を採用する。"
+  ],
+  "serviceName": "Foundry Models",
+  "armRegionName": "japaneast",
+  "mappings": [
+    {
+      "apimModelName": "chat-gpt-5.6-sol",
+      "meterNameInput": "5.6 sol ShortCo Inp Std Gl 1M Tokens",
+      "meterNameOutput": "5.6 sol ShortCo Opt Std Gl 1M Tokens"
+    }
+  ],
+  "fallback": {
+    "_comment": "allowlist 外・単価表に無いモデルが万一通った場合に使う安全側 (高め) の単価。実在の SKU ではなく運用上の保険。",
+    "apimModelName": "__default__",
+    "usdPerMillionInput": 30.0,
+    "usdPerMillionOutput": 120.0
+  }
+}

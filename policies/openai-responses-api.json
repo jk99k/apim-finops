@@ -1,0 +1,137 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Foundry OpenAI Responses API",
+    "description": "Microsoft Foundry のモデルデプロイを OpenAI Responses API 互換で公開する検証用の最小定義",
+    "version": "2025-04-01-preview"
+  },
+  "servers": [
+    {
+      "url": "https://placeholder.invalid/openai"
+    }
+  ],
+  "paths": {
+    "/models": {
+      "get": {
+        "summary": "List available models (OpenAI 互換のモデル一覧)",
+        "description": "OpenAI 互換クライアントは接続時にモデル一覧を取得して検証することがある。バックエンドには転送せず、allowlist の内容をポリシーで返す。",
+        "operationId": "list-models",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/responses": {
+      "post": {
+        "summary": "Create a model response (Responses API)",
+        "operationId": "create-response",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/completions": {
+      "post": {
+        "summary": "Create chat completion (OpenAI 互換のパス)",
+        "description": "deployment 名を URL に含まない OpenAI 互換クライアント向け。ポリシーでリクエストボディの model からデプロイ先を決めてバックエンドに転送する。",
+        "operationId": "create-chat-completion-openai",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deployments/{deployment-id}/chat/completions": {
+      "post": {
+        "summary": "Create chat completion (Chat Completions API 互換)",
+        "operationId": "create-chat-completion",
+        "parameters": [
+          {
+            "name": "deployment-id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

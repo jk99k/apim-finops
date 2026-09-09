@@ -97,10 +97,15 @@ Foundry 側が数えた実トークン数に**同じ単価表**を掛けたら�
 | `policies/quota-demo-policy.xml` | 上限超過検証専用 (上限値は Named values 経由で切替) |
 | `scripts/verify.py` | 検証項目 A1–A5 / B1–B8 の自動検証 |
 | `scripts/quota_overshoot.py` | トークン上限の「超過量」の定量化 |
+| `scripts/overshoot_scaling.py` | 超過量が上限値に比例するかを測る試み (未検証のまま。下記参照) |
 | `scripts/set_quota_demo_limits.py` | 検証モード切替 (ratelimit=429用 / quota=403用) |
 | `scripts/update_prices.py` | 単価表の手動更新 / `--dry-run` での差分確認 |
 | `scripts/apply_policy.py` | 検証サイクル用にポリシーだけを即時適用する補助ツール |
+| `scripts/seed_demo_data.py` | 画面撮影用のデモデータ投入 (チーム別・個人別に差をつける) |
+| `scripts/scan_secrets.py` | 公開前の機密情報スキャン |
 | `docs/kql-queries.md` | 可視化・アラート用 KQL クエリ集 |
+| `docs/presentation.html` | 発表スライド (スピーカーノート付き。ブラウザで開く) |
+| `results/` | 実測データ (上限超過の生ログ、検証項目ごとの結果) |
 
 ## 前提条件
 
